@@ -41,7 +41,7 @@ h2{font-size:17px;margin:0 0 10px}
 .ghost{background:none;border:1px solid var(--line);color:var(--mute);border-radius:10px;padding:8px 12px;font:inherit;cursor:pointer}
 .del{color:var(--danger)}
 .add{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:14px}
-@media(min-width:760px){.add{grid-template-columns:2fr 1fr 1fr 1fr auto}}
+@media(min-width:760px){.add{grid-template-columns:2fr 1.3fr 1fr 1fr 1fr auto}}
 label{display:flex;flex-direction:column;font-size:13px;color:var(--mute);gap:2px}
 input,select{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:9px 10px;min-width:0;width:100%}
 td input{padding:6px 8px;width:84px}
@@ -63,6 +63,7 @@ th{color:var(--mute);font-weight:500;font-size:14px}
 tfoot td{font-weight:800}
 .toast{position:fixed;bottom:calc(16px + env(safe-area-inset-bottom,0px));left:50%;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 18px;border-radius:12px;font-weight:700;opacity:0;pointer-events:none;transition:opacity .2s}
 .toast.show{opacity:1}
+#scan{position:fixed;inset:0;background:#000;z-index:50;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px}#scan video{width:100%;max-height:70%;object-fit:cover}
 .hide{display:none!important}
 </style>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
@@ -93,7 +94,8 @@ tfoot td{font-weight:800}
   </div>
 </section>
 <section id="sell" class="grid hide">
-  <div class="panel"><h2>المنتجات <small style="color:var(--mute);font-weight:400">(اضغط على المنتج لإضافته)</small></h2><div class="prods" id="prods"></div></div>
+  <div class="panel"><h2>المنتجات <small style="color:var(--mute);font-weight:400">(اضغط على المنتج لإضافته)</small></h2><div style="display:flex;gap:6px;margin-bottom:10px"><input type="text" id="codein" dir="ltr" placeholder="امسح الباركود أو اكتب الكود ثم Enter" autocomplete="off"><button class="ghost" id="camb" style="white-space:nowrap">📷 كاميرا</button></div>
+    <div class="prods" id="prods"></div></div>
   <div class="panel">
     <h2>الفاتورة</h2>
     <div id="cart"></div>
@@ -107,13 +109,14 @@ tfoot td{font-weight:800}
   <h2>إضافة صنف جديد</h2>
   <div class="add">
     <label>اسم الصنف<input type="text" id="pn" placeholder="مثال: كيس رز"></label>
+    <label>رقم الكود (اختياري)<span style="display:flex;gap:4px"><input type="text" id="pcode" dir="ltr" autocomplete="off"><button class="ghost" id="pscan" type="button">📷</button></span></label>
     <label>سعر التكلفة<input type="number" id="pc" min="0" step="0.25" inputmode="decimal"></label>
     <label>سعر البيع<input type="number" id="pp" min="0" step="0.25" inputmode="decimal"></label>
     <label>العدد (الكمية)<input type="number" id="pq" min="0" step="1" inputmode="numeric"></label>
     <button class="btn" id="padd" style="font-size:16px;align-self:end">إضافة</button>
   </div>
   <h2>المخزون الحالي <small style="color:var(--mute);font-weight:400">(تقدر تعدّل أي رقم مباشرة)</small></h2>
-  <div class="scroll"><table style="min-width:560px"><thead><tr><th>الصنف</th><th>التكلفة</th><th>البيع</th><th>ربح الحبة</th><th>العدد</th><th></th></tr></thead><tbody id="ib"></tbody></table></div>
+  <div class="scroll"><table style="min-width:720px"><thead><tr><th>الصنف</th><th>الكود</th><th>التكلفة</th><th>البيع</th><th>ربح الحبة</th><th>العدد</th><th></th></tr></thead><tbody id="ib"></tbody></table></div>
   <div class="empty hide" id="ie">ما فيه أصناف، أضف أول صنف</div>
 </section>
 
@@ -136,6 +139,7 @@ tfoot td{font-weight:800}
   <div class="empty hide" id="re">ما فيه مبيعات في هذه الفترة</div>
 </section>
 </div>
+<div id="scan" class="hide"><video id="sv" playsinline muted></video><p style="color:#fff;margin:0">وجّه الكاميرا نحو الباركود</p><button class="btn" id="sclose" style="width:auto;padding:12px 36px">إغلاق</button></div>
 <div class="toast" id="toast"></div>
 
 <script>
@@ -172,6 +176,16 @@ function putP(p){const i=prods.findIndex(x=>x.id===p.id);if(i<0)prods.push(p);el
 function delP(id){prods=prods.filter(x=>x.id!==id);W(()=>fs.doc('products/'+id).delete())}
 function addInv(inv){const k=dayKey(inv.t)+'_'+uid;(days[k]||(days[k]=[])).push(inv);W(()=>fs.doc('days/'+k).set({invoices:days[k]}))}
 
+function addToCart(p){
+  if((cart[p.id]||0)>=stockMap()[p.id]){toast('المخزون ما يكفي: '+p.name);return false}
+  cart[p.id]=(cart[p.id]||0)+1;drawCart();return true;
+}
+function handleCode(c){
+  c=String(c).trim();if(!c)return;
+  const p=prods.find(x=>x.code&&x.code===c);
+  if(!p){toast('الكود غير مسجل: '+c);return}
+  if(addToCart(p))toast('✓ '+p.name);
+}
 function drawProds(){
   const st=stockMap();$('prods').innerHTML='';
   prods.forEach(p=>{
@@ -179,10 +193,7 @@ function drawProds(){
     b.innerHTML='<b></b><span></span><small></small>';
     b.querySelector('b').textContent=p.name;b.querySelector('span').textContent=fmt(p.price);
     b.querySelector('small').textContent='المتوفر: '+q;
-    b.onclick=()=>{
-      if((cart[p.id]||0)>=stockMap()[p.id]){toast('المخزون ما يكفي: '+p.name);return}
-      cart[p.id]=(cart[p.id]||0)+1;drawCart();
-    };
+    b.onclick=()=>addToCart(p);
     $('prods').appendChild(b);
   });
   if(!prods.length)$('prods').innerHTML='<div class="empty">أضف أصنافك من تبويب «المخزون»</div>';
@@ -216,11 +227,12 @@ function drawInv(){
   const st=stockMap();$('ib').innerHTML='';
   prods.forEach(p=>{
     const tr=document.createElement('tr');
-    tr.innerHTML='<td></td><td><input type="number" step="0.25" min="0" inputmode="decimal"></td><td><input type="number" step="0.25" min="0" inputmode="decimal"></td><td class="profit"></td><td><input type="number" step="1" min="0" inputmode="numeric"></td><td><button class="ghost del">حذف</button></td>';
+    tr.innerHTML='<td></td><td><input type="text" dir="ltr" style="width:120px"></td><td><input type="number" step="0.25" min="0" inputmode="decimal"></td><td><input type="number" step="0.25" min="0" inputmode="decimal"></td><td class="profit"></td><td><input type="number" step="1" min="0" inputmode="numeric"></td><td><button class="ghost del">حذف</button></td>';
     tr.children[0].textContent=p.name;
-    const [ic,ip,iq]=tr.querySelectorAll('input');
-    ic.value=p.cost;ip.value=p.price;iq.value=st[p.id];
+    const [ico,ic,ip,iq]=tr.querySelectorAll('input');
+    ico.value=p.code||'';ic.value=p.cost;ip.value=p.price;iq.value=st[p.id];
     tr.querySelector('.profit').textContent=fmt(p.price-p.cost);
+    ico.onchange=()=>{const v=ico.value.trim();if(v&&prods.some(x=>x.id!==p.id&&x.code===v)){toast('الكود مستخدم لصنف ثاني');ico.value=p.code||'';return}putP({...p,code:v})};
     ic.onchange=()=>putP({...p,cost:Math.max(0,+ic.value||0)});
     ip.onchange=()=>putP({...p,price:Math.max(0,+ip.value||0)});
     iq.onchange=()=>putP({...p,base:Math.max(0,Math.floor(+iq.value||0)),since:Date.now()});
@@ -230,12 +242,13 @@ function drawInv(){
   $('ie').classList.toggle('hide',prods.length>0);
 }
 $('padd').onclick=()=>{
-  const n=$('pn').value.trim(),c=parseFloat($('pc').value),p=parseFloat($('pp').value),q=parseInt($('pq').value);
+  const n=$('pn').value.trim(),code=$('pcode').value.trim(),c=parseFloat($('pc').value),p=parseFloat($('pp').value),q=parseInt($('pq').value);
   if(!n||isNaN(c)||isNaN(p)||isNaN(q)||c<0||p<0||q<0){toast('عبّي الاسم والتكلفة والبيع والعدد');return}
+  if(code&&prods.some(x=>x.name!==n&&x.code===code)){toast('الكود مستخدم لصنف ثاني');return}
   const ex=prods.find(x=>x.name===n);
-  if(ex){putP({...ex,cost:c,price:p,base:stockMap()[ex.id]+q,since:Date.now()});toast('الصنف موجود: زاد العدد وتحدّثت الأسعار')}
-  else putP({id:nid(),name:n,cost:c,price:p,base:q,since:Date.now()});
-  ['pn','pc','pp','pq'].forEach(i=>$(i).value='');refresh();
+  if(ex){putP({...ex,code:code||ex.code||'',cost:c,price:p,base:stockMap()[ex.id]+q,since:Date.now()});toast('الصنف موجود: زاد العدد وتحدّثت الأسعار')}
+  else putP({id:nid(),name:n,code,cost:c,price:p,base:q,since:Date.now()});
+  ['pn','pcode','pc','pp','pq'].forEach(i=>$(i).value='');refresh();
 };
 
 function range(per,ds){
@@ -295,6 +308,31 @@ function tab(n){
 }
 [1,2,3].forEach(n=>$('t'+n).onclick=()=>tab(n));
 ['per','day','item','by'].forEach(i=>$(i).onchange=drawRep);
+
+let scanStream=null,scanOn=false;
+async function openScan(cb){
+  if(!('BarcodeDetector' in window)){toast('الكاميرا غير مدعومة في هذا المتصفح، اكتب الكود يدويًا');return}
+  try{
+    const det=new BarcodeDetector();
+    scanStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
+    const v=$('sv');v.srcObject=scanStream;await v.play();
+    $('scan').classList.remove('hide');scanOn=true;let last='',lt=0;
+    const loop=async()=>{
+      if(!scanOn)return;
+      try{const r=await det.detect(v);
+        if(r.length){const c=r[0].rawValue,now=Date.now();
+          if(c!==last||now-lt>1500){last=c;lt=now;if(!cb(c)){closeScan();return}}}
+      }catch(e){}
+      setTimeout(loop,250);
+    };
+    loop();
+  }catch(e){toast('تعذر فتح الكاميرا، تأكد من السماح بالصلاحية')}
+}
+function closeScan(){scanOn=false;if(scanStream){scanStream.getTracks().forEach(t=>t.stop());scanStream=null}$('scan').classList.add('hide')}
+$('sclose').onclick=closeScan;
+$('camb').onclick=()=>openScan(c=>{handleCode(c);return true});
+$('pscan').onclick=()=>openScan(c=>{$('pcode').value=String(c).trim();return false});
+$('codein').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();handleCode($('codein').value);$('codein').value=''}});
 
 function showGate(which){
   ['sell','inv','rep'].forEach(id=>$(id).classList.add('hide'));
