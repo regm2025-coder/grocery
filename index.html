@@ -180,11 +180,28 @@ function addToCart(p){
   if((cart[p.id]||0)>=stockMap()[p.id]){toast('المخزون ما يكفي: '+p.name);return false}
   cart[p.id]=(cart[p.id]||0)+1;drawCart();return true;
 }
+let actx=null;
+function unlockAudio(){try{actx=actx||new (window.AudioContext||window.webkitAudioContext)();if(actx.state==='suspended')actx.resume()}catch(e){}}
+['click','keydown','touchstart'].forEach(ev=>document.addEventListener(ev,unlockAudio));
+function beep(ok){
+  try{
+    unlockAudio();if(!actx)return;
+    const t=actx.currentTime;
+    const seq=ok?[[1100,0,.13]]:[[320,0,.16],[240,.2,.24]];
+    seq.forEach(([f,d,l])=>{
+      const o=actx.createOscillator(),g=actx.createGain();
+      o.type='sine';o.frequency.value=f;
+      g.gain.setValueAtTime(.35,t+d);g.gain.exponentialRampToValueAtTime(.001,t+d+l);
+      o.connect(g);g.connect(actx.destination);o.start(t+d);o.stop(t+d+l+.02);
+    });
+    if(navigator.vibrate)navigator.vibrate(ok?50:[80,60,80]);
+  }catch(e){}
+}
 function handleCode(c){
   c=String(c).trim();if(!c)return;
   const p=prods.find(x=>x.code&&x.code===c);
-  if(!p){toast('الكود غير مسجل: '+c);return}
-  if(addToCart(p))toast('✓ '+p.name);
+  if(!p){beep(false);toast('الكود غير مسجل: '+c);return}
+  if(addToCart(p)){beep(true);toast('✓ '+p.name)}else beep(false);
 }
 function drawProds(){
   const st=stockMap();$('prods').innerHTML='';
@@ -331,7 +348,7 @@ async function openScan(cb){
 function closeScan(){scanOn=false;if(scanStream){scanStream.getTracks().forEach(t=>t.stop());scanStream=null}$('scan').classList.add('hide')}
 $('sclose').onclick=closeScan;
 $('camb').onclick=()=>openScan(c=>{handleCode(c);return true});
-$('pscan').onclick=()=>openScan(c=>{$('pcode').value=String(c).trim();return false});
+$('pscan').onclick=()=>openScan(c=>{$('pcode').value=String(c).trim();beep(true);return false});
 $('codein').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();handleCode($('codein').value);$('codein').value=''}});
 
 function showGate(which){
